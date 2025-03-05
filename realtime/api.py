@@ -6,7 +6,7 @@ import websockets
 from datetime import datetime
 import logging
 from .event_handler import RealtimeEventHandler
-
+from websockets.http import Headers
 logger = logging.getLogger(__name__)
 
 class RealtimeAPI(RealtimeEventHandler):
@@ -63,7 +63,7 @@ class RealtimeAPI(RealtimeEventHandler):
                 extra_headers={
                     "Authorization": f"Bearer {self.api_key}",
                     "OpenAI-Beta": "realtime=v1",
-                },
+                }
             )
 
         self.log(f"Connected to {self.url}")

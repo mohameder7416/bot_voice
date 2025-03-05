@@ -4,6 +4,15 @@ from .event_handler import RealtimeEventHandler
 from .api import RealtimeAPI
 from .conversation import RealtimeConversation
 from .utils import get_realtime_instructions
+from datetime import datetime
+from .utils import *
+
+from chainlit.logger import logger
+from chainlit.config import config
+
+import json
+
+
 
 class RealtimeClient(RealtimeEventHandler):
     def __init__(self, url=None, api_key=None, system_message=None):
@@ -121,7 +130,7 @@ class RealtimeClient(RealtimeEventHandler):
                 },
             )
         except Exception as e:
-            logger.error(f"Tool call error: {json.dumps({"error": str(e)})}")
+            logger.error("Tool call error: " + json.dumps({"error": str(e)}))
             await self.realtime.send(
                 "conversation.item.create",
                 {
