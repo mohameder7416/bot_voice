@@ -1,0 +1,22 @@
+# Ignore environment variables
+.env
+.env.local
+.env.development
+.env.production
+.env.test
+.env.example
+
+# Ignore Python virtual environment
+venv/
+__pycache__/
+
+# Ignore logs and cache
+*.log
+*.cache
+*.pyc
+*.pyo
+
+# Ignore IDE and OS files
+.vscode/
+.idea/
+.DS_Store
