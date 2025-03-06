@@ -11,17 +11,26 @@ from chainlit.logger import logger
 from dotenv import load_dotenv
 
 from realtime.client import RealtimeClient
-from config.system_prompts import get_system_prompt
+from realtime.utils import get_realtime_instructions
 from tools import tools
 
 # Load environment variables
 load_dotenv()
 
+# Global variable to track client connection status
+client_connected = False
+
 async def setup_openai_realtime():
     """Instantiate and configure the OpenAI Realtime Client"""
+    global client_connected
+    api_key = os.getenv("OPENAI_API_KEY")
+    if not api_key:
+        logger.error("OPENAI_API_KEY not found in environment variables")
+        return None
+
     openai_realtime = RealtimeClient(
-        api_key=os.getenv("OPENAI_API_KEY"),
-        system_message=get_system_prompt("chainlit")
+        api_key=api_key,
+        system_message=get_realtime_instructions()
     )
     cl.user_session.set("track_id", str(uuid4()))
 
@@ -29,9 +38,8 @@ async def setup_openai_realtime():
         """Currently used to stream audio back to the client."""
         delta = event.get("delta")
         if delta:
-            # Only one of the following will be populated for any given event
             if "audio" in delta:
-                audio = delta["audio"]  # Int16Array, audio added
+                audio = delta["audio"]
                 await cl.context.emitter.send_audio_chunk(
                     cl.OutputAudioChunk(
                         mimeType="pcm16",
@@ -39,51 +47,68 @@ async def setup_openai_realtime():
                         track=cl.user_session.get("track_id"),
                     )
                 )
-            if "transcript" in delta:
-                transcript = delta["transcript"]  # string, transcript added
-                pass
-            if "arguments" in delta:
-                arguments = delta["arguments"]  # string, function arguments added
-                pass
-
+            
     async def handle_item_completed(item):
-        """Used to populate the chat context with transcription once an item is completed."""
-        pass
+        # Don't log the full item details
+        logger.info("Item completed")
 
     async def handle_conversation_interrupt(event):
-        """Used to cancel the client previous audio playback."""
         cl.user_session.set("track_id", str(uuid4()))
         await cl.context.emitter.send_audio_interrupt()
 
     async def handle_error(event):
-        logger.error(event)
+        # Don't log the full error details if it contains transcript data
+        if isinstance(event, dict) and "transcript" in str(event):
+            logger.error("OpenAI Realtime error occurred (transcript details omitted)")
+        else:
+            logger.error("OpenAI Realtime error occurred")
 
     openai_realtime.on("conversation.updated", handle_conversation_updated)
     openai_realtime.on("conversation.item.completed", handle_item_completed)
     openai_realtime.on("conversation.interrupted", handle_conversation_interrupt)
     openai_realtime.on("error", handle_error)
 
-    cl.user_session.set("openai_realtime", openai_realtime)
-    
     # Register all tools
-    coros = [
-        openai_realtime.add_tool(tool_def, tool_handler)
-        for tool_def, tool_handler in tools
-    ]
-    await asyncio.gather(*coros)
+    try:
+        coros = [
+            openai_realtime.add_tool(tool_def, tool_handler)
+            for tool_def, tool_handler in tools
+        ]
+        await asyncio.gather(*coros)
+    except Exception as e:
+        logger.error(f"Error registering tools: {str(e)}")
+        return None
 
+    # Connect to the OpenAI Realtime API
+    retry_count = 0
+    while retry_count < 3:
+        try:
+            await openai_realtime.connect()
+            client_connected = True
+            logger.info("Successfully connected to OpenAI Realtime API")
+            return openai_realtime
+        except Exception as e:
+            retry_count += 1
+            logger.error(f"Failed to connect to OpenAI Realtime API (attempt {retry_count})")
+            await asyncio.sleep(1)
+
+    logger.error("Failed to connect to OpenAI Realtime API after 3 attempts")
+    return None
 
 @cl.on_chat_start
 async def start():
     await cl.Message(content="Hello! I'm here. Press `P` to talk!").send()
-    await setup_openai_realtime()
-
+    openai_realtime = await setup_openai_realtime()
+    if openai_realtime:
+        cl.user_session.set("openai_realtime", openai_realtime)
+        logger.info("OpenAI Realtime client initialized and connected")
+    else:
+        await cl.Message(content="Failed to initialize OpenAI Realtime client. Please check your API key and try again.").send()
 
 @cl.on_message
 async def on_message(message: cl.Message):
     openai_realtime: RealtimeClient = cl.user_session.get("openai_realtime")
-    if openai_realtime and openai_realtime.is_connected():
-        # TODO: Try image processing with message.elements
+    if openai_realtime and client_connected:
         await openai_realtime.send_user_message_content(
             [{"type": "input_text", "text": message.content}]
         )
@@ -92,36 +117,43 @@ async def on_message(message: cl.Message):
             content="Please activate voice mode before sending messages!"
         ).send()
 
-
 @cl.on_audio_start
 async def on_audio_start():
-    try:
-        openai_realtime: RealtimeClient = cl.user_session.get("openai_realtime")
-        await openai_realtime.connect()
-        logger.info("Connected to OpenAI realtime")
-        return True
-    except Exception as e:
-        print(traceback.format_exc())
-        await cl.ErrorMessage(
-            content=f"Failed to connect to OpenAI realtime: {e}"
-        ).send()
-        return False
-
+    global client_connected
+    openai_realtime: RealtimeClient = cl.user_session.get("openai_realtime")
+    if openai_realtime and not client_connected:
+        try:
+            await openai_realtime.connect()
+            client_connected = True
+            logger.info("Connected to OpenAI realtime")
+        except Exception as e:
+            logger.error("Failed to connect to OpenAI realtime")
+            await cl.ErrorMessage(
+                content="Failed to connect to OpenAI realtime"
+            ).send()
+            return False
+    return client_connected
 
 @cl.on_audio_chunk
 async def on_audio_chunk(chunk: cl.InputAudioChunk):
+    global client_connected
     openai_realtime: RealtimeClient = cl.user_session.get("openai_realtime")
-    if openai_realtime.is_connected():
+    if openai_realtime and client_connected:
         await openai_realtime.append_input_audio(chunk.data)
     else:
-        logger.info("RealtimeClient is not connected")
-
+        # Don't log the audio chunk details
+        logger.debug("Skipping audio chunk: RealtimeClient is not connected or not initialized")
 
 @cl.on_audio_end
 @cl.on_chat_end
 @cl.on_stop
 async def on_end():
+    global client_connected
     openai_realtime: RealtimeClient = cl.user_session.get("openai_realtime")
-    if openai_realtime and openai_realtime.is_connected():
-        await openai_realtime.disconnect()
+    if openai_realtime:
+        if client_connected:
+            await openai_realtime.disconnect()
+            client_connected = False
+        cl.user_session.set("openai_realtime", None)
+    logger.info("OpenAI Realtime session ended")
 

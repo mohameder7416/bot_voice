@@ -1,15 +1,13 @@
-from .appointment import make_appointment_handler
-from .dealer_info import get_dealers_info_handler
-from .product_info import get_products_info
 
+from .chart import draw_plotly_chart 
 
 
 tools= [
-make_appointment_handler,
-get_dealers_info_handler,
-get_products_info,   
+  
+draw_plotly_chart,
 ]
 
 
 __all__ = ["tools"]
+
 

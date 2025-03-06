@@ -1,6 +1,15 @@
 import os
 import numpy as np
 import base64
+import logging
+
+
+
+
+# Setup logging
+logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
+logger = logging.getLogger(__name__)
+
 
 def get_realtime_instructions():
     """Read realtime instructions from text file."""
