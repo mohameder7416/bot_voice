@@ -1,10 +1,9 @@
 
-from .chart import draw_plotly_chart 
 
-
+from .get_dealers_info import get_dealers_infos
 tools= [
-  
-draw_plotly_chart,
+
+get_dealers_infos
 ]
 
 

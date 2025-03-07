@@ -12,6 +12,7 @@ from dotenv import load_dotenv
 
 from realtime.client import RealtimeClient
 from realtime.utils import get_realtime_instructions
+from config.systeme_prompt import agent_system_prompt
 from tools import tools
 
 # Load environment variables
@@ -30,7 +31,7 @@ async def setup_openai_realtime():
 
     openai_realtime = RealtimeClient(
         api_key=api_key,
-        system_message=get_realtime_instructions()
+        system_message=agent_system_prompt
     )
     cl.user_session.set("track_id", str(uuid4()))
 

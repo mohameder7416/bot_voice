@@ -14,7 +14,7 @@ class RealtimeAPI(RealtimeEventHandler):
         self,
         url=None,
         api_key=None,
-        api_version="2024-10-01-preview",
+        api_version="2024-12-17-preview",
         deployment=None,
     ):
         super().__init__()
@@ -24,7 +24,7 @@ class RealtimeAPI(RealtimeEventHandler):
             self.url = url or os.getenv("AZURE_OPENAI_URL")
             self.api_key = api_key or os.getenv("AZURE_OPENAI_API_KEY")
             self.api_version = api_version
-            self.deployment = deployment or os.getenv("OPENAI_DEPLOYMENT_NAME_REALTIME", "gpt-4o-realtime-preview")
+            self.deployment = deployment or os.getenv("OPENAI_DEPLOYMENT_NAME_REALTIME", "gpt-4o-mini-realtime")
             self.user_agent = "ms-rtclient-0.4.3"
             self.request_id = uuid.uuid4()
         else:
@@ -40,7 +40,7 @@ class RealtimeAPI(RealtimeEventHandler):
     def log(self, *args):
         logger.debug(f"[Websocket/{datetime.utcnow().isoformat()}]", *args)
 
-    async def connect(self, model="gpt-4o-realtime-preview-2024-10-01"):
+    async def connect(self, model="gpt-4o-mini-realtime-preview-2024-12-17"):
         if self.is_connected():
             raise Exception("Already connected")
 
