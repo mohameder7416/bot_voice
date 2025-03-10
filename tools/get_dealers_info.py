@@ -11,7 +11,7 @@ logger = logging.getLogger(__name__)
 
 get_dealers_info_def = {
     "name": "get_dealers_info",
-    "description": "Executes an SQL query on the dealers_info table to retrieve dealership information.",
+    "description": "Executes an SQL query on the dealers_info a table for dealers informations that offers buying services. This table contains columns: (dealer_name, address, phone, credit_app_link, inventory_link,offers_test_drive, welcome_message, shipping, trade_ins, opening_hours offer_finance) dealer_name: The name of the dealership. , It is typically the brand or business name that customers associate with the dealership ",
     "parameters": {
         "type": "object",
         "properties": {
@@ -46,9 +46,10 @@ async def get_dealers_info_handler(sql_query: str):
         
         # Load dealers_info data
         dealers_df = pd.read_sql_query(f"SELECT * FROM dealers_info WHERE dealer_id = {dealer_id}", engine)
-        
+        print("dealers_df",dealers_df)
         # Execute SQL query on DataFrame
-        env = {"dealers_df": dealers_df}
+        env = {"dealers_info": dealers_df}
+        print("sql_query",sql_query)
         result_df = ps.sqldf(sql_query, env)
         
         if result_df.empty:
