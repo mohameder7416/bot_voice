@@ -5,7 +5,7 @@ import os
 from dotenv import load_dotenv
 import requests
 from utils.create_token import create_token
-
+from variables.variables import load_variables
 # Setup logging
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
 logger = logging.getLogger(__name__)
@@ -102,9 +102,10 @@ async def get_products_info_handler(filters: dict):
             elif key == 'price_type':
                 api_filters.append(["price_type", "=", value])
             # Skip dealer_id as it's used separately
-
+        variables = load_variables()
+        dealer_id = variables.get("dealer_id")
         data = {
-            "user_id": filters.get('dealer_id', 102262),  # Default dealer_id if not provided
+            "user_id": dealer_id,  # Default dealer_id if not provided
             "status": "published",
             "filters": api_filters,
             "fields": ["year", "make", "model", "mileage", "price", "factory_color", 
