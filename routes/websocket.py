@@ -4,18 +4,13 @@ WebSocket routes for OpenAI Realtime API integration.
 
 import os
 import json
-import asyncio
 import logging
+import asyncio
 from fastapi import WebSocket, WebSocketDisconnect
-import requests
-from dotenv import load_dotenv
 
-from realtime.client import RealtimeClient
-from config.system_prompts import get_system_prompt
 from tools import tools
-
-# Load environment variables
-load_dotenv()
+from config.systeme_prompt import agent_system_prompt
+from realtime.client import RealtimeClient
 
 # Configure logging
 logging.basicConfig(
@@ -24,30 +19,9 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-# Webhook URL for external integrations
-MAKE_WEBHOOK_URL = os.getenv("MAKE_WEBHOOK_URL", "")
-
-async def send_to_webhook(payload):
-    """Send data to the Make.com webhook."""
-    logger.info(f"Sending data to webhook: {json.dumps(payload, indent=2)}")
-    try:
-        response = requests.post(
-            MAKE_WEBHOOK_URL,
-            headers={"Content-Type": "application/json"},
-            json=payload
-        )
-        
-        logger.info(f"Webhook response status: {response.status_code}")
-        if response.ok:
-            response_text = response.text
-            logger.info(f"Webhook response: {response_text}")
-            return response_text
-        else:
-            logger.error(f"Failed to send data to webhook: {response.reason}")
-            raise Exception("Webhook request failed")
-    except Exception as error:
-        logger.error(f"Error sending data to webhook: {error}")
-        raise
+# OpenAI API configuration
+OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
+VOICE = 'alloy'
 
 async def handle_media_stream(websocket: WebSocket, session_id: str, session: dict):
     """Handle the WebSocket connection for Twilio media streams."""
@@ -56,10 +30,9 @@ async def handle_media_stream(websocket: WebSocket, session_id: str, session: di
     
     first_message = ""
     stream_sid = ""
-    thread_id = ""
     
     # Retrieve the caller number from the session
-    caller_number = session.get("caller_number")
+    caller_number = session.get("caller_number", "Unknown")
     logger.info(f"Caller Number: {caller_number}")
     
     # Set environment variable for tools to use
@@ -67,10 +40,10 @@ async def handle_media_stream(websocket: WebSocket, session_id: str, session: di
     
     # Create and configure the OpenAI Realtime client
     realtime_client = RealtimeClient(
-        api_key=os.getenv("OPENAI_API_KEY"),
-        system_message=get_system_prompt("twilio")
+        api_key=OPENAI_API_KEY,
+        system_message=agent_system_prompt
     )
-    realtime_client.set_voice("alloy")
+    realtime_client.set_voice(VOICE)
     
     # Register event handlers
     async def handle_audio_delta(event):
@@ -149,17 +122,6 @@ async def handle_media_stream(websocket: WebSocket, session_id: str, session: di
         except Exception as e:
             logger.error(f"Error processing Twilio messages: {e}")
             
-        # Send the transcript to the webhook before disconnecting
-        try:
-            await send_to_webhook({
-                "route": "2",
-                "data1": session.get("caller_number"),
-                "data2": session["transcript"]
-            })
-        except Exception as e:
-            logger.error(f"Error sending transcript to webhook: {e}")
-            
     finally:
         # Disconnect from OpenAI
         await realtime_client.disconnect()
-

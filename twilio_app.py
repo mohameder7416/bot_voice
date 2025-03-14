@@ -8,7 +8,6 @@ import asyncio
 import logging
 from fastapi import FastAPI, Request, WebSocket, WebSocketDisconnect
 from fastapi.responses import HTMLResponse, JSONResponse, Response
-import requests
 from dotenv import load_dotenv
 
 from routes.websocket import handle_media_stream
@@ -25,7 +24,6 @@ logger = logging.getLogger(__name__)
 
 # Retrieve the OpenAI API key from environment variables
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
-MAKE_WEBHOOK_URL = os.getenv("MAKE_WEBHOOK_URL", "")
 
 # Check if the API key is missing
 if not OPENAI_API_KEY:
@@ -52,55 +50,27 @@ async def incoming_call(request: Request):
     # Get all incoming call details from the request
     if request.method == "POST":
         form_data = await request.form()
-        twillio_params = {k: v for k, v in form_data.items()}
+        twilio_params = {k: v for k, v in form_data.items()}
     else:
-        twillio_params = dict(request.query_params)
+        twilio_params = dict(request.query_params)
     
-    logging.info(f"Twilio Inbound Details: {json.dumps(twillio_params, indent=2)}")
+    logging.info(f"Twilio Inbound Details: {json.dumps(twilio_params, indent=2)}")
     
     # Extract caller's number and session ID (CallSid)
-    caller_number = twillio_params.get("From", "Unknown")
-    session_id = twillio_params.get("CallSid")
+    caller_number = twilio_params.get("From", "Unknown")
+    session_id = twilio_params.get("CallSid")
     logging.info(f"Caller Number: {caller_number}")
     logging.info(f"Session ID (CallSid): {session_id}")
     
-    # Send the caller's number to Make.com webhook to get a personalized first message
-    first_message = "Hello, welcome to Bart's Automotive. How can I assist you today?"
-    
-    try:
-        # Send a POST request to Make.com webhook
-        webhook_response = requests.post(
-            MAKE_WEBHOOK_URL,
-            headers={"Content-Type": "application/json"},
-            json={
-                "route": "1",
-                "data1": caller_number,
-                "data2": "empty"
-            }
-        )
-        
-        if webhook_response.ok:
-            response_text = webhook_response.text
-            logging.info(f"Make.com webhook response: {response_text}")
-            try:
-                response_data = json.loads(response_text)
-                if response_data and response_data.get("firstMessage"):
-                    first_message = response_data["firstMessage"]
-                    logging.info(f"Parsed firstMessage from Make.com: {first_message}")
-            except json.JSONDecodeError as parse_error:
-                logging.error(f"Error parsing webhook response: {parse_error}")
-                first_message = response_text.strip()
-        else:
-            logging.error(f"Failed to send data to Make.com webhook: {webhook_response.status_code} - {webhook_response.reason}")
-    except Exception as error:
-        logging.error(f"Error sending data to Make.com webhook: {error}")
+    # Set default first message
+    first_message = "Hello, welcome to our service. How can I assist you today?"
     
     # Set up a new session for this call
     session = {
         "transcript": "",
         "stream_sid": None,
         "caller_number": caller_number,
-        "call_details": twillio_params,
+        "call_details": twilio_params,
         "first_message": first_message
     }
     sessions[session_id] = session
@@ -109,6 +79,8 @@ async def incoming_call(request: Request):
     host = request.headers.get("host", "localhost:8000")
     twiml_response = f"""<?xml version="1.0" encoding="UTF-8"?>
                        <Response>
+                           <Say>Please wait while we connect you to our AI assistant.</Say>
+                           <Pause length="1"/>
                            <Connect>
                                <Stream url="wss://{host}/media-stream">
                                    <Parameter name="firstMessage" value="{first_message}" />
@@ -139,4 +111,3 @@ if __name__ == "__main__":
     import uvicorn
     PORT = int(os.getenv("PORT", "5050"))
     uvicorn.run(app, host="0.0.0.0", port=PORT)
-
