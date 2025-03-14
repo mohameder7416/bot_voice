@@ -12,6 +12,7 @@ from chainlit.config import config
 
 import json
 
+from utils.get_dealer_voice import get_dealer_voice
 
 
 class RealtimeClient(RealtimeEventHandler):
@@ -20,7 +21,7 @@ class RealtimeClient(RealtimeEventHandler):
         self.default_session_config = {
             "modalities": ["text", "audio"],
             "instructions": system_message or get_realtime_instructions(),
-            "voice": "shimmer",
+            "voice": get_dealer_voice(),
             "input_audio_format": "pcm16",
             "output_audio_format": "pcm16",
             "input_audio_transcription": {"model": "whisper-1"},
