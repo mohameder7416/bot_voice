@@ -1,9 +1,23 @@
 from pymysql import Error
-
-from db import Database
+import os
+from .db import DataBase
 from variables.variables import load_variables
 
-def get_dealer_name_bot(db):
+
+PWA_DB_HOST_V12CHAT_READ = os.getenv("PWA_DB_HOST_V12CHAT_READ")
+PWA_DB_USERNAME_V12CHAT_READ = os.getenv("PWA_DB_USERNAME_V12CHAT_READ")
+PWA_DB_PASSWORD_V12CHAT_READ = os.getenv("PWA_DB_PASSWORD_V12CHAT_READ")
+PWA_DB_DATABASE_V12CHAT_READ = os.getenv("PWA_DB_DATABASE_V12CHAT_READ")
+
+
+
+
+
+
+
+
+
+def get_dealer_name_bot():
     """
     Retrieve bot name for a dealer from the dealer_info table.
     
@@ -17,7 +31,13 @@ def get_dealer_name_bot(db):
     """
     try:
         # Get dealer_id from variables
-        db=Database()
+        db = DataBase(
+    host=PWA_DB_HOST_V12CHAT_READ,
+    user=PWA_DB_USERNAME_V12CHAT_READ,
+    password=PWA_DB_PASSWORD_V12CHAT_READ,
+    database=PWA_DB_DATABASE_V12CHAT_READ,
+    port=3306
+)
         variables = load_variables()
         
         dealer_id = variables.get("dealer_id")

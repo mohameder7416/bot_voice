@@ -224,4 +224,3 @@ class RealtimeConversation:
         item["arguments"] += delta
         item["formatted"]["tool"]["arguments"] += delta
         return item, {"arguments": delta}
-
