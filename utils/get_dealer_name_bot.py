@@ -4,10 +4,11 @@ from .db import DataBase
 from variables.variables import load_variables
 
 
-PWA_DB_HOST_V12CHAT_READ = os.getenv("PWA_DB_HOST_V12CHAT_READ")
-PWA_DB_USERNAME_V12CHAT_READ = os.getenv("PWA_DB_USERNAME_V12CHAT_READ")
-PWA_DB_PASSWORD_V12CHAT_READ = os.getenv("PWA_DB_PASSWORD_V12CHAT_READ")
-PWA_DB_DATABASE_V12CHAT_READ = os.getenv("PWA_DB_DATABASE_V12CHAT_READ")
+DB_HOST_READ = os.getenv("DB_HOST_READ")
+DB_USER_READ = os.getenv("DB_USER_READ")
+DB_PASSWORD_READ = os.getenv("DB_PASSWORD_READ")
+DB_NAME_READ = os.getenv("DB_NAME_READ")
+DB_PORT_READ = os.getenv("DB_PORT_READ", 3306)  # Providing a default value for the port
 
 
 
@@ -32,12 +33,12 @@ def get_dealer_name_bot():
     try:
         # Get dealer_id from variables
         db = DataBase(
-    host=PWA_DB_HOST_V12CHAT_READ,
-    user=PWA_DB_USERNAME_V12CHAT_READ,
-    password=PWA_DB_PASSWORD_V12CHAT_READ,
-    database=PWA_DB_DATABASE_V12CHAT_READ,
-    port=3306
-)
+            host=DB_HOST_READ ,
+            user=DB_USER_READ ,
+            password=DB_PASSWORD_READ,
+            database=DB_NAME_READ,
+            port=3306
+        )
         variables = load_variables()
         
         dealer_id = variables.get("dealer_id")
@@ -54,7 +55,7 @@ def get_dealer_name_bot():
         
         # Query to get bot_name from dealer_info table
         query = """
-            SELECT bot_name FROM dealer_info 
+            SELECT bot_name FROM dealers_info 
             WHERE dealer_id = %s
         """
         

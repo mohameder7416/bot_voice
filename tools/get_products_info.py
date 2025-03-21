@@ -9,6 +9,7 @@ from variables.variables import load_variables
 # Setup logging
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
 logger = logging.getLogger(__name__)
+from utils.llm_call import llm_call
 
 get_products_info_def = {
     "name": "get_products_info",
@@ -73,22 +74,20 @@ get_products_info_def = {
 
 async def get_products_info_handler(filters: dict):
     """
-    Handler function that retrieves product information from the inventory API with the given filters.
+    Retrieves product information from the inventory API and analyzes the results using OpenAI's LLM.
     
     Args:
-        filters (dict): A dictionary of filters to apply to the product search
+        filters (dict): Dictionary of filters to apply to the product search.
         
     Returns:
-        dict: A dictionary containing either a list of products or an error message
+        dict: Contains analyzed product insights or an error message.
     """
     load_dotenv()
-    
+
     try:
         logger.info(f"🔍 Retrieving product information with filters: {filters}")
-        
-        api_url = os.getenv("base_url_products_invontaire")
-        
 
+        api_url = os.getenv("base_url_products_invontaire")
         headers = create_token()
 
         api_filters = []
@@ -101,11 +100,12 @@ async def get_products_info_handler(filters: dict):
                 api_filters.append(["is_added", "=", value])
             elif key == 'price_type':
                 api_filters.append(["price_type", "=", value])
-            # Skip dealer_id as it's used separately
+        
         variables = load_variables()
         dealer_id = variables.get("dealer_id")
+
         data = {
-            "user_id": dealer_id,  # Default dealer_id if not provided
+            "user_id": dealer_id,
             "status": "published",
             "filters": api_filters,
             "fields": ["year", "make", "model", "mileage", "price", "factory_color", 
@@ -114,7 +114,7 @@ async def get_products_info_handler(filters: dict):
         }
 
         logger.info(f"📤 Sending API request with data: {data}")
-        
+
         response = requests.get(api_url, json=data, headers=headers)
         response.raise_for_status()
         products = response.json().get("data", [])
@@ -122,9 +122,43 @@ async def get_products_info_handler(filters: dict):
         if not products:
             logger.warning("⚠️ No products found matching the criteria.")
             return {"message": "No products found matching the criteria."}
-        
+
         logger.info(f"✅ Successfully retrieved {len(products)} products.")
-        return {"products": products}
+
+        # Convert product data to a human-readable format for analysis
+        product_summary = "\n".join([
+            f"- {p['attributes']['year']} {p['attributes']['make']} {p['attributes']['model']} "
+            f"({p['attributes']['factory_color']}), {p['attributes']['mileage']} miles, "
+            f"Price: ${p['attributes']['price']}"
+            for p in products
+        ])
+
+        analysis_prompt = f"""
+        Here is a list of vehicles in inventory:
+
+        {product_summary}
+
+        You are a business intelligence assistant that analyzes vehicle inventory data and provides insights.
+    Filters can include:
+        vin (str): Vehicle Identification Number
+        year (int): Year of manufacture
+        make (str): Make of the vehicle
+        model (str): Model of the vehicle
+        isadded (bool): Whether the product is added
+        mileage (int): Mileage of the vehicle
+        condition (str): Condition of the vehicle
+        title (str): Title of the product
+        price (float): Price of the product
+        price_type (str): Type of price
+        Your task is to analyze the inventory based on these filters and provide key insights.
+
+        Provide a professional summary of your findings.
+        """
+
+        # Get analysis from LLM
+        analysis = llm_call(prompt=analysis_prompt, task="precise")
+
+        return {"analysis": analysis}
         
     except requests.RequestException as e:
         logger.error(f"❌ API request error: {str(e)}")
@@ -135,4 +169,3 @@ async def get_products_info_handler(filters: dict):
 
 # Create the tuple for export
 get_products_infos = (get_products_info_def, get_products_info_handler)
-

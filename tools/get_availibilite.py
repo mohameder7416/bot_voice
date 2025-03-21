@@ -48,7 +48,20 @@ def parse_response_safely(response):
             return {"error": "Empty response from API"}
         
         # Try to parse as JSON
-        return response.json()
+        data = json.loads(response.text)
+        
+        # Handle the actual API response structure
+        if 'result' in data and isinstance(data['result'], list):
+            logger.info("Converting 'result' array to 'dates' for compatibility")
+            return {"dates": data['result']}
+        elif 'dates' in data:
+            # Already in the expected format
+            return data
+        else:
+            # Log the structure to help debug
+            logger.warning(f"Unexpected API response structure. Top-level keys: {list(data.keys())}")
+            return data
+            
     except json.JSONDecodeError as e:
         logger.error(f"Failed to parse JSON response: {str(e)}")
         logger.error(f"Response content: {response.text}")
@@ -109,7 +122,7 @@ async def get_availability_handler(date: str, time: str, time_window: int = 3):
         if not dealer_id:
             logger.error("❌ dealer_id not found in variables")
             return {"error": "dealer_id not found in configuration"}
-        
+            
         logger.info(f"Using dealer_id: {dealer_id}")
         
         # Parse requested datetime
@@ -141,52 +154,102 @@ async def get_availability_handler(date: str, time: str, time_window: int = 3):
         
         logger.info(f"Successfully parsed availability data")
         
+        # Helper function to convert 12-hour time to 24-hour time
+        def convert_to_24hour(time_str):
+            """Convert 12-hour format (e.g., '02:00 PM') to 24-hour format (e.g., '14:00')"""
+            try:
+                return datetime.strptime(time_str, "%I:%M %p").strftime("%H:%M")
+            except ValueError as e:
+                logger.error(f"Error converting time: {e}")
+                return None
+        
         # Find the nearest available time slot
         nearest_slot = None
         min_time_diff = timedelta(hours=24*7)  # Initialize with a large value (1 week)
         all_available_slots = []
         
-        # Check if slots exist in the response
-        if "slots" not in availability_data or not availability_data["slots"]:
-            logger.warning("⚠️ No slots found in the availability data")
+        # Find the date entry for the requested date
+        date_entry = None
+        for date_item in availability_data.get("dates", []):
+            if date_item["date"] == date:
+                date_entry = date_item
+                break
+        
+        # Check if we found the date and it has hours data
+        if not date_entry:
+            logger.warning(f"⚠️ No data found for date: {date}")
             return {
                 "available": False,
-                "message": "No available slots found in the dealer's calendar",
+                "message": f"No available slots found for {date}",
                 "nearest_slot": None,
                 "alternative_slots": []
             }
         
-        for slot in availability_data.get("slots", []):
+        if "hours" not in date_entry or not date_entry["hours"]:
+            logger.warning(f"⚠️ No time slots available for date: {date}")
+            return {
+                "available": False,
+                "message": f"No available slots found for {date}",
+                "nearest_slot": None,
+                "alternative_slots": []
+            }
+        
+        # Process all time slots for this date
+        for slot in date_entry["hours"]:
             # Ensure slot has required fields
-            if "date" not in slot or "time" not in slot:
-                logger.warning(f"⚠️ Skipping slot with missing date or time: {slot}")
+            if "start" not in slot or "end" not in slot:
+                logger.warning(f"⚠️ Skipping slot with missing start or end time: {slot}")
                 continue
-                
+            
             try:
-                # Make sure we're using the correct format from the API response
-                slot_datetime = datetime.strptime(f"{slot['date']} {slot['time']}", "%Y-%m-%d %H:%M")
+                # Convert 12-hour format to 24-hour format
+                start_time_12h = slot["start"]
+                end_time_12h = slot["end"]
+                start_time_24h = convert_to_24hour(start_time_12h)
+                end_time_24h = convert_to_24hour(end_time_12h)
+                
+                if not start_time_24h or not end_time_24h:
+                    logger.warning(f"⚠️ Could not convert time format for slot: {slot}")
+                    continue
+                
+                # Create datetime objects for comparison
+                slot_datetime = datetime.strptime(f"{date} {start_time_24h}", "%Y-%m-%d %H:%M")
                 
                 # Only consider future slots
                 if slot_datetime < datetime.now():
-                    logger.debug(f"Skipping past slot: {slot['date']} {slot['time']}")
+                    logger.debug(f"Skipping past slot: {date} {start_time_12h}")
                     continue
                 
                 # Calculate time difference
                 time_diff = abs(slot_datetime - requested_datetime)
+                time_diff_hours = time_diff.total_seconds() / 3600
                 
                 # Store all slots within the time window for additional options
-                if time_diff <= timedelta(hours=time_window):
+                if time_diff_hours <= time_window:
                     all_available_slots.append({
-                        "date": slot["date"],
-                        "time": slot["time"],
+                        "date": date,
+                        "time": start_time_12h,
+                        "end_time": end_time_12h,
+                        "time_24h": start_time_24h,
+                        "end_time_24h": end_time_24h,
                         "time_diff_minutes": int(time_diff.total_seconds() / 60),
-                        "datetime": slot_datetime.strftime("%Y-%m-%d %H:%M")
+                        "datetime": slot_datetime.strftime("%Y-%m-%d %H:%M"),
+                        "agent_ids": slot.get("agent_ids", [])
                     })
                 
                 # Update nearest slot if this one is closer
                 if time_diff < min_time_diff:
                     min_time_diff = time_diff
-                    nearest_slot = slot
+                    nearest_slot = {
+                        "date": date,
+                        "time": start_time_12h,
+                        "end_time": end_time_12h,
+                        "time_24h": start_time_24h,
+                        "end_time_24h": end_time_24h,
+                        "time_diff_minutes": int(time_diff.total_seconds() / 60),
+                        "datetime": slot_datetime.strftime("%Y-%m-%d %H:%M"),
+                        "agent_ids": slot.get("agent_ids", [])
+                    }
             except ValueError as e:
                 # Log and skip slots with invalid date/time format
                 logger.warning(f"⚠️ Invalid date/time format in slot: {slot}. Error: {str(e)}")
@@ -202,10 +265,13 @@ async def get_availability_handler(date: str, time: str, time_window: int = 3):
             }
         
         # Sort alternative slots by time difference
-        sorted_alternatives = sorted(all_available_slots, key=lambda x: x["time_diff_minutes"])
+        sorted_alternatives = sorted(
+            [slot for slot in all_available_slots if slot != nearest_slot],
+            key=lambda x: x["time_diff_minutes"]
+        )
         
         # Format the time difference for the nearest slot
-        nearest_diff_minutes = int(min_time_diff.total_seconds() / 60)
+        nearest_diff_minutes = nearest_slot["time_diff_minutes"]
         time_diff_str = f"{nearest_diff_minutes} minute{'s' if nearest_diff_minutes != 1 else ''}"
         if nearest_diff_minutes >= 60:
             hours = nearest_diff_minutes // 60
@@ -214,18 +280,32 @@ async def get_availability_handler(date: str, time: str, time_window: int = 3):
             if minutes > 0:
                 time_diff_str += f" and {minutes} minute{'s' if minutes != 1 else ''}"
         
-        logger.info(f"✅ Found nearest available slot: {nearest_slot['date']} at {nearest_slot['time']} ({time_diff_str} from requested time)")
+        logger.info(f"✅ Found nearest available slot: {date} at {nearest_slot['time']} ({time_diff_str} from requested time)")
+        
+        # Format the response
+        formatted_nearest_slot = {
+            "date": nearest_slot["date"],
+            "time": nearest_slot["time"],
+            "end_time": nearest_slot["end_time"],
+            "time_diff_minutes": nearest_slot["time_diff_minutes"],
+            "datetime": nearest_slot["datetime"]
+        }
+        
+        formatted_alternatives = []
+        for slot in sorted_alternatives[:5]:  # Return up to 5 alternatives
+            formatted_alternatives.append({
+                "date": slot["date"],
+                "time": slot["time"],
+                "end_time": slot["end_time"],
+                "time_diff_minutes": slot["time_diff_minutes"],
+                "datetime": slot["datetime"]
+            })
         
         return {
             "available": True,
             "message": f"Found available slot {time_diff_str} from your requested time",
-            "nearest_slot": {
-                "date": nearest_slot["date"],
-                "time": nearest_slot["time"],
-                "time_diff_minutes": nearest_diff_minutes,
-                "datetime": datetime.strptime(f"{nearest_slot['date']} {nearest_slot['time']}", "%Y-%m-%d %H:%M").strftime("%Y-%m-%d %H:%M")
-            },
-            "alternative_slots": sorted_alternatives[:5]  # Return up to 5 alternatives
+            "nearest_slot": formatted_nearest_slot,
+            "alternative_slots": formatted_alternatives
         }
         
     except Exception as e:
@@ -270,7 +350,7 @@ if __name__ == "__main__":
             # Only test the handler if we got a valid response
             if response.status_code == 200 and "error" not in parsed_data:
                 print("\nTesting handler with parsed data...")
-                result = await get_availability_handler("2023-05-15", "14:00", 5)
+                result = await get_availability_handler("2025-04-18", "14:00", 5)
                 print("\nHandler Result:")
                 print(json.dumps(result, indent=2))
             else:

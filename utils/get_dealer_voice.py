@@ -2,11 +2,12 @@ import os
 from .db import DataBase
 from variables.variables import load_variables
 from pymysql import Error
-
-PWA_DB_HOST_V12CHAT_READ = os.getenv("PWA_DB_HOST_V12CHAT_READ")
-PWA_DB_USERNAME_V12CHAT_READ = os.getenv("PWA_DB_USERNAME_V12CHAT_READ")
-PWA_DB_PASSWORD_V12CHAT_READ = os.getenv("PWA_DB_PASSWORD_V12CHAT_READ")
-PWA_DB_DATABASE_V12CHAT_READ = os.getenv("PWA_DB_DATABASE_V12CHAT_READ")
+       # Get database connection parameters from environment variables
+DB_HOST_READ = os.getenv("DB_HOST_READ")
+DB_USER_READ = os.getenv("DB_USER_READ")
+DB_PASSWORD_READ = os.getenv("DB_PASSWORD_READ")
+DB_NAME_READ = os.getenv("DB_NAME_READ")
+DB_PORT_READ = int(os.getenv("DB_PORT_READ", 3306))  # Providing a default value for the port
 
 def get_dealer_voice():
     """
@@ -18,11 +19,11 @@ def get_dealer_voice():
     try:
         # Get dealer_id from variables
         db = DataBase(
-            host=PWA_DB_HOST_V12CHAT_READ,
-            user=PWA_DB_USERNAME_V12CHAT_READ,
-            password=PWA_DB_PASSWORD_V12CHAT_READ,
-            database=PWA_DB_DATABASE_V12CHAT_READ,
-            port=3306
+            host=DB_HOST_READ ,
+            user=DB_USER_READ ,
+            password=DB_PASSWORD_READ,
+            database=DB_NAME_READ,
+            port=DB_PORT_READ 
         )
         variables = load_variables()
         
@@ -40,7 +41,7 @@ def get_dealer_voice():
         
         # Query to get dealer voice from dealer_info table
         query = """
-            SELECT voice FROM dealer_info 
+            SELECT voice FROM dealers_info 
             WHERE dealer_id = %s
         """
         

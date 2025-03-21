@@ -12,9 +12,10 @@ from .utils import get_realtime_instructions, array_buffer_to_base64
 from datetime import datetime
 import numpy as np
 import json
-
+from config.systeme_prompt import agent_system_prompt
 # Import the global END_CALL variable
 from . import globals
+from utils.get_welcome_script import get_welcome_script
 
 from utils.get_dealer_voice import get_dealer_voice
 
@@ -26,7 +27,7 @@ class RealtimeClient(RealtimeEventHandler):
         super().__init__()
         self.default_session_config = {
             "modalities": ["text", "audio"],
-            "instructions": system_message or get_realtime_instructions(),
+            "instructions": agent_system_prompt,
             "voice": get_dealer_voice(),
             "input_audio_format": "pcm16",
             "output_audio_format": "pcm16",
@@ -167,6 +168,9 @@ class RealtimeClient(RealtimeEventHandler):
         # Start the END_CALL flag checking task
         if self.loop and not self.end_call_check_task:
             self.end_call_check_task = asyncio.create_task(self._check_end_call_flag())
+        
+        if self.loop :
+            asyncio.create_task(self.send_initial_conversation_item())    
 
     def _process_event(self, event, *args):
         # Reset silence timer on any event
@@ -198,7 +202,34 @@ class RealtimeClient(RealtimeEventHandler):
             
         # Reset silence timer when an item is created
         self._reset_silence_timer()
-
+    
+    
+    async def send_initial_conversation_item(self):
+        """Send initial conversation item to make AI speak first."""
+        initial_conversation_item = {
+            "type": "conversation.item.create",
+            "item": {
+                "type": "message",
+                "role": "user",
+                "content": [
+                    {
+                        "type": "input_text",
+                        "text": "Greet the user with "+ str(get_welcome_script())
+                    }
+                ]
+            }
+        }
+        await self.realtime.send("conversation.item.create", {"item": initial_conversation_item["item"]})
+        await self.realtime.send("response.create")
+        logger.info("Sent initial greeting to start the conversation")
+    
+    
+    
+    
+    
+    
+    
+    
     async def _on_output_item_done(self, event):
         item, delta = self._process_event(event)
         if item and item["status"] == "completed":
